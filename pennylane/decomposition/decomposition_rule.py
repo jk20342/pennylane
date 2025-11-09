@@ -21,12 +21,15 @@ from collections import Counter, defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
 from textwrap import dedent
-from typing import overload
+from typing import TypeVar, overload
 
 from pennylane.operation import Operator
 
 from .resources import Resources, auto_wrap
 from .utils import translate_op_alias
+
+TFunc = TypeVar("TFunc", bound=Callable[..., object])
+DecoratorOrRule = Callable[[TFunc], DecompositionRule] | DecompositionRule
 
 
 @dataclass(frozen=True)
@@ -55,12 +58,19 @@ class WorkWireSpec:
 
 
 @overload
-def register_condition(condition: Callable) -> Callable[[Callable], DecompositionRule]: ...
-@overload
-def register_condition(condition: Callable, qfunc: Callable) -> DecompositionRule: ...
 def register_condition(
-    condition: Callable[..., bool], qfunc: Callable | None = None
-) -> Callable[[Callable], DecompositionRule] | DecompositionRule:
+    condition: Callable[..., bool]
+) -> Callable[[TFunc], DecompositionRule]: ...
+@overload
+def register_condition(
+    condition: Callable[..., bool], qfunc: TFunc
+) -> DecompositionRule: ...
+
+
+def register_condition(
+    condition: Callable[..., bool],
+    qfunc: TFunc | None = None,
+) -> Callable[[TFunc], DecompositionRule] | DecompositionRule:
     """Binds a condition to a decomposition rule for when it is applicable.
 
     .. note::
@@ -124,7 +134,10 @@ def register_condition(
 
 @overload
 def register_resources(
-    ops: Callable | dict, *, work_wires: Callable | dict | None = None, exact: bool = True
+    ops: Callable | dict,
+    *,
+    work_wires: Callable | dict | None = None,
+    exact: bool = True,
 ) -> Callable[[Callable], DecompositionRule]: ...
 @overload
 def register_resources(
@@ -408,9 +421,13 @@ class DecompositionRule:
     def compute_resources(self, *args, **kwargs) -> Resources:
         """Computes the resources required to implement this decomposition rule."""
         if self._compute_resources is None:
-            raise NotImplementedError("No resource estimation found for this decomposition rule.")
+            raise NotImplementedError(
+                "No resource estimation found for this decomposition rule."
+            )
         raw_gate_counts = self._compute_resources(*args, **kwargs)
-        assert isinstance(raw_gate_counts, dict), "Resource function must return a dictionary."
+        assert isinstance(
+            raw_gate_counts, dict
+        ), "Resource function must return a dictionary."
         gate_counter = Counter()
         for op, count in raw_gate_counts.items():
             if count > 0:
@@ -431,7 +448,9 @@ class DecompositionRule:
         """Adds a condition for this decomposition rule."""
         self._conditions.append(condition)
 
-    def set_resources(self, resources: Callable | dict, exact_resources: bool = True) -> None:
+    def set_resources(
+        self, resources: Callable | dict, exact_resources: bool = True
+    ) -> None:
         """Sets the resources for this decomposition rule."""
 
         if isinstance(resources, dict):
