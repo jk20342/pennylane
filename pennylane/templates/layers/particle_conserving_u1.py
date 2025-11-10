@@ -14,11 +14,12 @@
 r"""
 Contains the hardware-efficient ParticleConservingU1 template.
 """
-# pylint: disable-msg=too-many-branches,too-many-arguments,protected-access
 import numpy as np
 
-import pennylane as qml
-from pennylane.operation import AnyWires, Operation
+from pennylane import math
+from pennylane.operation import Operation
+from pennylane.ops import CNOT, CZ, CRot, PhaseShift
+from pennylane.templates.embeddings import BasisEmbedding
 
 
 def decompose_ua(phi, wires=None):
@@ -48,15 +49,15 @@ def decompose_ua(phi, wires=None):
     op_list = []
     n, m = wires
 
-    op_list.append(qml.CZ(wires=wires))
-    op_list.append(qml.CRot(-phi, np.pi, phi, wires=wires))
+    op_list.append(CZ(wires=wires))
+    op_list.append(CRot(-phi, np.pi, phi, wires=wires))
 
     # decomposition of C-PhaseShift(2*phi) gate
-    op_list.append(qml.PhaseShift(-phi, wires=m))
-    op_list.append(qml.CNOT(wires=wires))
-    op_list.append(qml.PhaseShift(phi, wires=m))
-    op_list.append(qml.CNOT(wires=wires))
-    op_list.append(qml.PhaseShift(-phi, wires=n))
+    op_list.append(PhaseShift(-phi, wires=m))
+    op_list.append(CNOT(wires=wires))
+    op_list.append(PhaseShift(phi, wires=m))
+    op_list.append(CNOT(wires=wires))
+    op_list.append(PhaseShift(-phi, wires=n))
 
     return op_list
 
@@ -80,8 +81,8 @@ def u1_ex_gate(phi, theta, wires=None):
     # C-UA(phi)
     op_list.extend(decompose_ua(phi, wires=wires))
 
-    op_list.append(qml.CZ(wires=wires[::-1]))
-    op_list.append(qml.CRot(0, 2 * theta, 0, wires=wires[::-1]))
+    op_list.append(CZ(wires=wires[::-1]))
+    op_list.append(CRot(0, 2 * theta, 0, wires=wires[::-1]))
 
     # C-UA(-phi)
     op_list.extend(decompose_ua(-phi, wires=wires))
@@ -243,7 +244,6 @@ class ParticleConservingU1(Operation):
             params = np.random.random(size=shape)
     """
 
-    num_wires = AnyWires
     grad_method = None
 
     def __init__(self, weights, wires, init_state=None, id=None):
@@ -252,7 +252,7 @@ class ParticleConservingU1(Operation):
                 f"Expected the number of qubits to be greater than one; " f"got wires {wires}"
             )
 
-        shape = qml.math.shape(weights)
+        shape = math.shape(weights)
 
         if len(shape) != 3:
             raise ValueError(f"Weights tensor must be 3-dimensional; got shape {shape}")
@@ -301,26 +301,33 @@ class ParticleConservingU1(Operation):
         **Example**
 
         >>> weights = torch.tensor([[[0.3, 1.]]])
-        >>> qml.ParticleConservingU1.compute_decomposition(weights, wires=["a", "b"], init_state=[0, 1])
-        [BasisEmbedding(wires=['a', 'b']),
-         CZ(wires=['a', 'b']),
-         CRot(tensor(-0.3000), 3.141592653589793, tensor(0.3000), wires=['a', 'b']),
-         PhaseShift(tensor(-0.3000), wires=['b']), CNOT(wires=['a', 'b']),
-         PhaseShift(tensor(0.3000), wires=['b']), CNOT(wires=['a', 'b']),
-         PhaseShift(tensor(-0.3000), wires=['a']), CZ(wires=['b', 'a']),
-         CRot(0, tensor(2.), 0, wires=['b', 'a']), CZ(wires=['a', 'b']),
-         CRot(tensor(0.3000), 3.141592653589793, tensor(-0.3000), wires=['a', 'b']),
-         PhaseShift(tensor(0.3000), wires=['b']),
-         CNOT(wires=['a', 'b']),
-         PhaseShift(tensor(-0.3000), wires=['b']),
-         CNOT(wires=['a', 'b']),
-         PhaseShift(tensor(0.3000), wires=['a'])]
+        >>> ops = qml.ParticleConservingU1.compute_decomposition(weights, wires=["a", "b"], init_state=[0, 1])
+        >>> from pprint import pprint
+        >>> pprint(ops)
+        [BasisEmbedding(array([0, 1]), wires=['a', 'b']),
+        CZ(wires=['a', 'b']),
+        CRot(tensor(-0.3000), 3.141592653589793, tensor(0.3000), wires=Wires(['a', 'b'])),
+        PhaseShift(tensor(-0.3000), wires=['b']),
+        CNOT(wires=['a', 'b']),
+        PhaseShift(tensor(0.3000), wires=['b']),
+        CNOT(wires=['a', 'b']),
+        PhaseShift(tensor(-0.3000), wires=['a']),
+        CZ(wires=['b', 'a']),
+        CRot(0, tensor(2.), 0, wires=Wires(['b', 'a'])),
+        CZ(wires=['a', 'b']),
+        CRot(tensor(0.3000), 3.141592653589793, tensor(-0.3000), wires=Wires(['a', 'b'])),
+        PhaseShift(tensor(0.3000), wires=['b']),
+        CNOT(wires=['a', 'b']),
+        PhaseShift(tensor(-0.3000), wires=['b']),
+        CNOT(wires=['a', 'b']),
+        PhaseShift(tensor(0.3000), wires=['a'])]
+
         """
 
         nm_wires = [wires[l : l + 2] for l in range(0, len(wires) - 1, 2)]
         nm_wires += [wires[l : l + 2] for l in range(1, len(wires) - 1, 2)]
-        n_layers = qml.math.shape(weights)[0]
-        op_list = [qml.BasisEmbedding(init_state, wires=wires)]
+        n_layers = math.shape(weights)[0]
+        op_list = [BasisEmbedding(init_state, wires=wires)]
 
         for l in range(n_layers):
             for i, wires_ in enumerate(nm_wires):

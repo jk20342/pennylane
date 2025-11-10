@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# pylint: disable=too-many-arguments
+
 """
 This submodule contains the discrete-variable quantum operations that are the
 core parametrized gates for qutrits.
@@ -138,9 +138,7 @@ class TRX(Operation):
         return self._subspace
 
     @staticmethod
-    def compute_matrix(
-        theta, subspace=(0, 1)
-    ):  # pylint: disable=arguments-differ,dangerous-default-value
+    def compute_matrix(theta, subspace=(0, 1)):  # pylint: disable=arguments-differ
         r"""Representation of the operator as a canonical matrix in the computational basis.
 
         The canonical matrix is the textbook matrix representation that does not consider wires.
@@ -165,7 +163,9 @@ class TRX(Operation):
         c = qml.math.cos(theta / 2)
         s = qml.math.sin(theta / 2)
 
-        if qml.math.get_interface(theta) == "tensorflow":
+        if (
+            qml.math.get_interface(theta) == "tensorflow"
+        ):  # pragma: no cover (TensorFlow tests were disabled during deprecation)
             c = qml.math.cast_like(c, 1j)
             s = qml.math.cast_like(s, 1j)
 
@@ -232,17 +232,17 @@ class TRY(Operation):
     applies to:
 
     >>> qml.TRY(0.5, wires=0, subspace=(0, 1)).matrix()
-    array([[ 0.96891242+0.j, -0.24740396-0.j,  0.        +0.j],
-           [ 0.24740396+0.j,  0.96891242+0.j,  0.        +0.j],
+    array([[ 0.96891242+0.j, -0.24740396-0.j, -0.        -0.j],
+           [ 0.24740396+0.j,  0.96891242+0.j, -0.        -0.j],
            [ 0.        +0.j,  0.        +0.j,  1.        +0.j]])
 
     >>> qml.TRY(0.5, wires=0, subspace=(0, 2)).matrix()
-    array([[ 0.96891242+0.j,  0.        +0.j, -0.24740396-0.j],
-           [ 0.        +0.j,  1.        +0.j,  0.        +0.j],
+    array([[ 0.96891242+0.j, -0.        -0.j, -0.24740396-0.j],
+           [ 0.        +0.j,  1.        +0.j, -0.        -0.j],
            [ 0.24740396+0.j,  0.        +0.j,  0.96891242+0.j]])
 
     >>> qml.TRY(0.5, wires=0, subspace=(1, 2)).matrix()
-    array([[ 1.        +0.j,  0.        +0.j,  0.        +0.j],
+    array([[ 1.        +0.j, -0.        -0.j, -0.        -0.j],
            [ 0.        +0.j,  0.96891242+0.j, -0.24740396-0.j],
            [ 0.        +0.j,  0.24740396+0.j,  0.96891242+0.j]])
     """
@@ -303,13 +303,15 @@ class TRY(Operation):
         **Example**
 
         >>> qml.TRY.compute_matrix(torch.tensor(0.5), subspace=(0, 2))
-        tensor([[ 0.9689+0.j,  0.0000+0.j, -0.2474-0.j],
-                [ 0.0000+0.j,  1.0000+0.j,  0.0000+0.j],
+        tensor([[ 0.9689+0.j, -0.0000-0.j, -0.2474-0.j],
+                [ 0.0000+0.j,  1.0000+0.j, -0.0000-0.j],
                 [ 0.2474+0.j,  0.0000+0.j,  0.9689+0.j]])
         """
         c = qml.math.cos(theta / 2)
         s = qml.math.sin(theta / 2)
-        if qml.math.get_interface(theta) == "tensorflow":
+        if (
+            qml.math.get_interface(theta) == "tensorflow"
+        ):  # pragma: no cover (TensorFlow tests were disabled during deprecation)
             c = qml.math.cast_like(c, 1j)
             s = qml.math.cast_like(s, 1j)
 
@@ -457,7 +459,9 @@ class TRZ(Operation):
                 [0.0000+0.0000j, 1.0000+0.0000j, 0.0000+0.0000j],
                 [0.0000+0.0000j, 0.0000+0.0000j, 0.9689+0.2474j]])
         """
-        if qml.math.get_interface(theta) == "tensorflow":
+        if (
+            qml.math.get_interface(theta) == "tensorflow"
+        ):  # pragma: no cover (TensorFlow tests were disabled during deprecation)
             theta = qml.math.cast_like(theta, 1j)
         p = qml.math.exp(-1j * theta / 2)
         one = qml.math.ones_like(p)

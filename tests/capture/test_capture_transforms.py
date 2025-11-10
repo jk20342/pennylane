@@ -28,7 +28,7 @@ from pennylane.capture.primitives import cond_prim, for_loop_prim, qnode_prim, w
 from pennylane.tape.plxpr_conversion import CollectOpsandMeas
 from pennylane.transforms.core import TransformError, TransformProgram, transform
 
-pytestmark = [pytest.mark.jax, pytest.mark.usefixtures("enable_disable_plxpr")]
+pytestmark = [pytest.mark.jax, pytest.mark.capture]
 
 
 @transform
@@ -130,6 +130,36 @@ class TestCaptureTransforms:
         for eqn1, eqn2 in zip(inner_jaxpr.eqns, expected_jaxpr.eqns, strict=True):
             assert eqn1.primitive == eqn2.primitive
 
+    def test_transform_qfunc_pytree_args(self):
+        """Test that transforming an object that accepts pytree arguments is correct."""
+
+        def func(x):
+            y = x[0] * 5 + x[1]
+            return y**0.5
+
+        args = ([1.5, 2.5],)
+        targs = [0, 1]
+        tkwargs = {"dummy_kwarg1": "foo", "dummy_kwarg2": "bar"}
+
+        transformed_func = z_to_hadamard(func, *targs, **tkwargs)
+
+        jaxpr = jax.make_jaxpr(transformed_func)(*args)
+        assert (transform_eqn := jaxpr.eqns[0]).primitive == z_to_hadamard._primitive
+
+        params = transform_eqn.params
+        assert params["args_slice"] == slice(0, 2)
+        assert params["consts_slice"] == slice(2, 2)
+        assert params["targs_slice"] == slice(2, None)
+        assert params["tkwargs"] == tkwargs
+
+        inner_jaxpr = params["inner_jaxpr"]
+        expected_jaxpr = jax.make_jaxpr(func)(*args).jaxpr
+        for eqn1, eqn2 in zip(inner_jaxpr.eqns, expected_jaxpr.eqns, strict=True):
+            assert eqn1.primitive == eqn2.primitive
+
+        # Verifying that transformed function can execute
+        _ = transformed_func(*args)
+
     def test_transform_qnode_capture(self):
         """Test that a transformed QNode is captured correctly."""
         dev = qml.device("default.qubit", wires=2)
@@ -140,7 +170,7 @@ class TestCaptureTransforms:
             return qml.expval(qml.Z(0))
 
         args = (1.5,)
-        targs = [0, 1]
+        targs = (0, 1)
         tkwargs = {"dummy_kwarg1": "foo", "dummy_kwarg2": "bar"}
 
         transformed_func = z_to_hadamard(func, *targs, **tkwargs)
@@ -155,7 +185,7 @@ class TestCaptureTransforms:
         expected_program = TransformProgram()
         expected_program.add_transform(z_to_hadamard, *targs, **tkwargs)
         # Manually change targs from tuple to list
-        expected_program[0]._args = targs  # pylint: disable=protected-access
+        expected_program[0]._args = tuple(targs)  # pylint: disable=protected-access
         assert qnode.transform_program == expected_program
 
         qfunc_jaxpr = qnode_jaxpr.eqns[0].params["qfunc_jaxpr"]
@@ -500,12 +530,12 @@ class TestTapeTransformFallback:
                 qml.X(0)
 
             @cond_fn.else_if(x > 2)
-            def _():
+            def _else_if():
                 qml.Z(0)
                 qml.Y(0)
 
             @cond_fn.otherwise
-            def _():
+            def _else_branch():
                 qml.Z(0)
                 qml.T(0)
 

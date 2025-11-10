@@ -14,27 +14,25 @@
 """
 Defines the DeviceCapabilities class, and tools to load it from a TOML file.
 """
+
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from itertools import repeat
-from typing import Callable, Optional, Union
 
 import tomlkit as toml
 
-import pennylane as qml
+from pennylane.exceptions import InvalidCapabilitiesError, QuantumFunctionError
 from pennylane.operation import Operator
+from pennylane.ops import CompositeOp, SymbolicOp
 
 ALL_SUPPORTED_SCHEMAS = [3]
 
 
-class InvalidCapabilitiesError(Exception):
-    """Exception raised from invalid TOML files."""
-
-
 def load_toml_file(file_path: str) -> dict:
     """Loads a TOML file and returns the parsed dict."""
-    with open(file_path, "r", encoding="utf-8") as file:
+    with open(file_path, encoding="utf-8") as file:
         return toml.load(file)
 
 
@@ -80,7 +78,7 @@ class OperatorProperties:
         )
 
 
-def _get_supported_base_op(op_name: str, op_dict: dict[str, OperatorProperties]) -> Optional[str]:
+def _get_supported_base_op(op_name: str, op_dict: dict[str, OperatorProperties]) -> str | None:
     """Checks if the given operator is supported by name, returns the base op for nested ops"""
 
     if op_name in op_dict:
@@ -178,12 +176,34 @@ class DeviceCapabilities:  # pylint: disable=too-many-instance-attributes
         update_device_capabilities(capabilities, document, runtime_interface)
         return capabilities
 
-    def supports_operation(self, operation: Union[str, Operator]) -> bool:
+    def gate_set(self, differentiable=False) -> set[str]:
+        """Get the names of the set of supported gates.
+
+        Args:
+            differentiable (bool): Whether to include gates that are not differentiable.
+                If True, gates that are not differentiable will be excluded.
+
+        Returns:
+            set[str]: The target gate set.
+
+        """
+        gate_set = set()
+        for op, prop in self.operations.items():
+            if differentiable and not prop.differentiable:
+                continue
+            gate_set.add(op)
+            if prop.controllable:
+                gate_set.add(f"C({op})")
+            if prop.invertible:
+                gate_set.add(f"Adjoint({op})")
+        return gate_set
+
+    def supports_operation(self, operation: str | Operator) -> bool:
         """Checks if the given operation is supported by name."""
         operation_name = operation if isinstance(operation, str) else operation.name
         return bool(_get_supported_base_op(operation_name, self.operations))
 
-    def supports_observable(self, observable: Union[str, Operator]) -> bool:
+    def supports_observable(self, observable: str | Operator) -> bool:
         """Checks if the given observable is supported by name."""
         observable_name = observable if isinstance(observable, str) else observable.name
         return bool(_get_supported_base_op(observable_name, self.observables))
@@ -410,7 +430,7 @@ def update_device_capabilities(
 
 def observable_stopping_condition_factory(
     capabilities: DeviceCapabilities,
-) -> Callable[[qml.operation.Operator], bool]:
+) -> Callable[[Operator], bool]:
     """Returns a default observable validation check from a capabilities object.
 
     The returned function checks if an observable is supported, for composite and nested
@@ -418,15 +438,15 @@ def observable_stopping_condition_factory(
 
     """
 
-    def observable_stopping_condition(obs: qml.operation.Operator) -> bool:
+    def observable_stopping_condition(obs: Operator) -> bool:
 
         if not capabilities.supports_observable(obs.name):
             return False
 
-        if isinstance(obs, qml.ops.CompositeOp):
+        if isinstance(obs, CompositeOp):
             return all(observable_stopping_condition(op) for op in obs.operands)
 
-        if isinstance(obs, qml.ops.SymbolicOp):
+        if isinstance(obs, SymbolicOp):
             return observable_stopping_condition(obs.base)
 
         return True
@@ -441,25 +461,22 @@ def validate_mcm_method(capabilities: DeviceCapabilities, mcm_method: str, shots
         return  # no need to validate if requested deferred or if no method is requested.
 
     if mcm_method == "one-shot" and not shots_present:
-        raise qml.QuantumFunctionError(
-            'The "one-shot" MCM method is only supported with finite shots.'
-        )
+        raise QuantumFunctionError('The "one-shot" MCM method is only supported with finite shots.')
 
     if capabilities is None:
         # If the device does not declare its supported mcm methods through capabilities,
         # simply check that the requested mcm method is something we recognize.
         if mcm_method not in ("deferred", "one-shot", "tree-traversal"):
-            raise qml.QuantumFunctionError(
+            raise QuantumFunctionError(
                 f'Requested MCM method "{mcm_method}" unsupported by the device. Supported methods '
                 f'are: "deferred", "one-shot", and "tree-traversal".'
             )
         return
 
     if mcm_method not in capabilities.supported_mcm_methods:
-
         supported_methods = capabilities.supported_mcm_methods + ["deferred"]
         supported_method_strings = [f'"{m}"' for m in supported_methods]
-        raise qml.QuantumFunctionError(
+        raise QuantumFunctionError(
             f'Requested MCM method "{mcm_method}" unsupported by the device. Supported methods '
             f"are: {', '.join(supported_method_strings)}."
         )

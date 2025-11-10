@@ -136,7 +136,7 @@ class TestDecomposition:
         allowed_obs = (qml.ops.Prod, Identity, PauliX, PauliY, PauliZ)
 
         _, decomposed_obs = qml.pauli_decompose(hamiltonian, hide_identity).terms()
-        assert all((isinstance(o, allowed_obs) for o in decomposed_obs))
+        assert all(isinstance(o, allowed_obs) for o in decomposed_obs)
 
     @pytest.mark.parametrize("hamiltonian", test_hamiltonians)
     def test_result_length(self, hamiltonian):
@@ -216,6 +216,67 @@ class TestDecomposition:
         x = jax.numpy.array([[2, 1 - 1j], [1 + 1j, 0]])
         assert np.allclose(decompose_hermitian(x)[0], [1, 1, 1, 1])
 
+    @pytest.mark.parametrize(
+        "sparse_type",
+        ["csr_matrix", "csr_array", "csc_matrix", "csc_array", "coo_matrix", "coo_array"],
+    )
+    @pytest.mark.parametrize("hamiltonian", test_hamiltonians)
+    def test_sparse_matrix_decomposition(self, hamiltonian, sparse_type):
+        """Tests that pauli_decompose successfully decomposes sparse matrices"""
+        import scipy.sparse as sp
+
+        sparse_class = getattr(sp, sparse_type)
+        sparse_hamiltonian = sparse_class(hamiltonian)
+
+        decomposed_coeff, decomposed_obs = qml.pauli_decompose(sparse_hamiltonian).terms()
+
+        linear_comb = sum([decomposed_coeff[i] * o.matrix() for i, o in enumerate(decomposed_obs)])
+        assert np.allclose(hamiltonian, linear_comb)
+
+    @pytest.mark.parametrize("sparse_type", ["csr_matrix", "csr_array"])
+    def test_sparse_matrix_to_paulisentence(self, sparse_type):
+        """Test that a PauliSentence is returned from sparse matrix with pauli=True"""
+        import scipy.sparse as sp
+
+        hamiltonian = np.array([[2.5, -0.5], [-0.5, 2.5]])
+        sparse_class = getattr(sp, sparse_type)
+        sparse_hamiltonian = sparse_class(hamiltonian)
+
+        ps = qml.pauli_decompose(sparse_hamiltonian, pauli=True)
+        num_qubits = int(np.log2(hamiltonian.shape[0]))
+
+        assert isinstance(ps, qml.pauli.PauliSentence)
+        assert np.allclose(hamiltonian, ps.to_mat(range(num_qubits)))
+
+    def test_sparse_matrix_wire_order(self):
+        """Test that wire ordering works with sparse matrices"""
+        import scipy.sparse as sp
+
+        wire_order = ["a", 0]
+        hamiltonian = np.array(
+            [[-2, -2 + 1j, -2, -2], [-2 - 1j, 0, 0, -1], [-2, 0, -2, -1], [-2, -1, -1, 0]]
+        )
+        sparse_hamiltonian = sp.csr_matrix(hamiltonian)
+
+        h = qml.pauli_decompose(sparse_hamiltonian, wire_order=wire_order)
+        ps = qml.pauli_decompose(sparse_hamiltonian, pauli=True, wire_order=wire_order)
+
+        assert set(ps.wires) == set(wire_order)
+        assert h.wires.toset() == set(wire_order)
+
+    def test_sparse_matrix_hide_identity(self):
+        """Tests that hide_identity works correctly with sparse matrices"""
+        import scipy.sparse as sp
+
+        H = sp.csr_matrix(np.diag([0, 0, 0, 1]))
+        _, obs_list = qml.pauli_decompose(H, hide_identity=True).terms()
+        tensors = filter(lambda obs: isinstance(obs, qml.ops.Prod), obs_list)
+
+        for tensor in tensors:
+            all_identities = all(isinstance(o, Identity) for o in tensor.operands)
+            no_identities = not any(isinstance(o, Identity) for o in tensor.operands)
+            assert all_identities or no_identities
+
 
 class TestPhasedDecomposition:
     """Tests the _generalized_pauli_decompose via pauli_decompose function"""
@@ -271,7 +332,7 @@ class TestPhasedDecomposition:
         _, decomposed_obs = qml.pauli_decompose(
             hamiltonian, hide_identity, check_hermitian=False
         ).terms()
-        assert all((isinstance(o, allowed_obs) for o in decomposed_obs))
+        assert all(isinstance(o, allowed_obs) for o in decomposed_obs)
 
     @pytest.mark.parametrize("hamiltonian", test_hamiltonians)
     def test_result_length(self, hamiltonian):
@@ -325,7 +386,7 @@ class TestPhasedDecomposition:
             matrix, hide_identity, check_hermitian=False
         ).terms()
 
-        assert all((isinstance(o, allowed_obs) for o in decomposed_obs))
+        assert all(isinstance(o, allowed_obs) for o in decomposed_obs)
 
         linear_comb = sum(
             [
@@ -387,13 +448,12 @@ class TestPhasedDecomposition:
         """Test builtins support in pauli_decompose"""
 
         import jax
-        import tensorflow as tf
         import torch
 
-        libraries = [np.array, jax.numpy.array, torch.tensor, tf.Variable]
+        libraries = [np.array, jax.numpy.array, torch.tensor]
         matrices = [[[library(i) for i in row] for row in matrix] for library in libraries]
 
-        interfaces = ["numpy", "jax", "torch", "tensorflow"]
+        interfaces = ["numpy", "jax", "torch"]
         for mat, interface in zip(matrices, interfaces):
             coeffs = qml.pauli_decompose(mat).coeffs
             assert qml.math.get_interface(coeffs[0]) == interface
@@ -412,7 +472,6 @@ class TestPhasedDecomposition:
         """Test differentiability for pauli_decompose"""
 
         import jax
-        import tensorflow as tf
         import torch
 
         dev = qml.device("default.qubit", wires=2)
@@ -436,15 +495,8 @@ class TestPhasedDecomposition:
             result.backward()
             grad_torch = A.grad
 
-            # Tensorflow Interface
-            A = tf.Variable(qml.numpy.array(matrix))
-            with tf.GradientTape() as tape:
-                loss = circuit(A)
-            grad_tflow = tape.gradient(loss, A)
-
             # Comparisons - note: https://github.com/google/jax/issues/9110
             assert qml.math.allclose(grad_numpy, grad_jax)
-            assert qml.math.allclose(grad_torch, grad_tflow)
             assert qml.math.allclose(grad_numpy, qml.math.conjugate(grad_torch))
 
 

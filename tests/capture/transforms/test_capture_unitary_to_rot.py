@@ -26,7 +26,6 @@ from pennylane.capture.primitives import (
     cond_prim,
     ctrl_transform_prim,
     for_loop_prim,
-    grad_prim,
     jacobian_prim,
     qnode_prim,
     while_loop_prim,
@@ -39,7 +38,7 @@ from pennylane.transforms.unitary_to_rot import (
     unitary_to_rot_plxpr_to_plxpr,
 )
 
-pytestmark = [pytest.mark.jax, pytest.mark.usefixtures("enable_disable_plxpr")]
+pytestmark = [pytest.mark.jax, pytest.mark.capture]
 
 
 class TestUnitaryToRotInterpreter:
@@ -156,7 +155,7 @@ def test_plxpr_to_plxpr():
     jaxpr = jax.make_jaxpr(circuit)(*args)
     transformed_jaxpr = unitary_to_rot_plxpr_to_plxpr(jaxpr.jaxpr, jaxpr.consts, [], {}, *args)
 
-    assert isinstance(transformed_jaxpr, jax.core.ClosedJaxpr)
+    assert isinstance(transformed_jaxpr, jax.extend.core.ClosedJaxpr)
 
     # Qubit Unitary decomposition
     with qml.capture.pause():
@@ -286,12 +285,12 @@ class TestHigherOrderPrimitiveIntegration:
                 return qml.expval(qml.Z(0))
 
             @cond_f.else_if(n > 1)
-            def _():
+            def _else_if():
                 qml.QubitUnitary(U, 1)
                 return qml.expval(qml.Y(0))
 
             @cond_f.otherwise
-            def _():
+            def _else():
                 qml.QubitUnitary(U, 2)
                 return qml.expval(qml.X(0))
 
@@ -311,7 +310,7 @@ class TestHigherOrderPrimitiveIntegration:
         assert branch_jaxpr.eqns[-4].primitive == qml.RY._primitive
         assert branch_jaxpr.eqns[-3].primitive == qml.RZ._primitive
         # Make sure its on wire=0
-        assert qml.math.allclose(branch_jaxpr.eqns[-3].invars[1], 0)
+        assert qml.math.allclose(branch_jaxpr.eqns[-3].invars[1].val, 0)
         # Measurement
         assert branch_jaxpr.eqns[-2].primitive == qml.PauliZ._primitive
         assert branch_jaxpr.eqns[-1].primitive == qml.measurements.ExpectationMP._obs_primitive
@@ -323,7 +322,7 @@ class TestHigherOrderPrimitiveIntegration:
         assert branch_jaxpr.eqns[-4].primitive == qml.RY._primitive
         assert branch_jaxpr.eqns[-3].primitive == qml.RZ._primitive
         # Make sure its on wire=1
-        assert qml.math.allclose(branch_jaxpr.eqns[-3].invars[1], 1)
+        assert qml.math.allclose(branch_jaxpr.eqns[-3].invars[1].val, 1)
         # Measurement
         assert branch_jaxpr.eqns[-2].primitive == qml.PauliY._primitive
         assert branch_jaxpr.eqns[-1].primitive == qml.measurements.ExpectationMP._obs_primitive
@@ -335,7 +334,7 @@ class TestHigherOrderPrimitiveIntegration:
         assert branch_jaxpr.eqns[-4].primitive == qml.RY._primitive
         assert branch_jaxpr.eqns[-3].primitive == qml.RZ._primitive
         # Make sure its on wire=2
-        assert qml.math.allclose(branch_jaxpr.eqns[-3].invars[1], 2)
+        assert qml.math.allclose(branch_jaxpr.eqns[-3].invars[1].val, 2)
         # Measurement
         assert branch_jaxpr.eqns[-2].primitive == qml.PauliX._primitive
         assert branch_jaxpr.eqns[-1].primitive == qml.measurements.ExpectationMP._obs_primitive
@@ -357,7 +356,7 @@ class TestHigherOrderPrimitiveIntegration:
 
         jaxpr = jax.make_jaxpr(f)(1.0, 2.0, 3.0)
 
-        assert jaxpr.eqns[0].primitive == grad_prim
+        assert jaxpr.eqns[0].primitive == jacobian_prim
 
         grad_jaxpr = jaxpr.eqns[0].params["jaxpr"]
         qfunc_jaxpr = grad_jaxpr.eqns[0].params["qfunc_jaxpr"]
@@ -385,6 +384,7 @@ class TestHigherOrderPrimitiveIntegration:
         jaxpr = jax.make_jaxpr(f)(1.0, 2.0, 3.0)
 
         assert jaxpr.eqns[0].primitive == jacobian_prim
+        assert not jaxpr.eqns[0].params["scalar_out"]
 
         grad_jaxpr = jaxpr.eqns[0].params["jaxpr"]
         qfunc_jaxpr = grad_jaxpr.eqns[0].params["qfunc_jaxpr"]

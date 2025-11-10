@@ -54,7 +54,6 @@ class SymbolicOp(Operator):
         # has no wires, so doesn't need any wires processing
         return cls._primitive.bind(*args, **kwargs)
 
-    # pylint: disable=attribute-defined-outside-init
     @handle_recursion_error
     def __copy__(self):
         # this method needs to be overwritten because the base must be copied too.
@@ -74,6 +73,8 @@ class SymbolicOp(Operator):
     # pylint: disable=super-init-not-called
     def __init__(self, base, id=None):
         self.hyperparameters["base"] = base
+        if isinstance(base, qml.ops.MidMeasure):
+            raise ValueError("Symbolic operators of mid-circuit measurements are not supported.")
         self._id = id
         self._pauli_rep = None
         self.queue()
@@ -122,8 +123,8 @@ class SymbolicOp(Operator):
         return self.base.has_matrix
 
     @property
-    def is_hermitian(self):
-        return self.base.is_hermitian
+    def is_verified_hermitian(self):
+        return self.base.is_verified_hermitian
 
     @property
     def _queue_category(self):
@@ -266,7 +267,9 @@ class ScalarSymbolicOp(SymbolicOp):
         if scalar_interface == "torch":
             # otherwise get `RuntimeError: Can't call numpy() on Tensor that requires grad.`
             base_matrix = qml.math.convert_like(base_matrix, self.scalar)
-        elif scalar_interface == "tensorflow":
+        elif (
+            scalar_interface == "tensorflow"
+        ):  # pragma: no cover (TensorFlow tests were disabled during deprecation)
             # just cast everything to complex128. Otherwise we may have casting problems
             # where things get truncated like in SProd(tf.Variable(0.1), qml.X(0))
             scalar = qml.math.cast(scalar, "complex128")

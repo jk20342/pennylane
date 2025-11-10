@@ -35,7 +35,9 @@ class CollectResourceOps(FlattenedInterpreter):
 
 
 @CollectResourceOps.register_primitive(adjoint_transform_prim)
-def _(self, *invals, jaxpr, lazy, n_consts):  # pylint: disable=unused-argument
+def _adjoint_transform_prim(
+    self, *invals, jaxpr, lazy, n_consts
+):  # pylint: disable=unused-argument
     """Collect all operations in the base plxpr and create adjoint resource ops with them."""
     consts = invals[:n_consts]
     args = invals[n_consts:]
@@ -47,7 +49,7 @@ def _(self, *invals, jaxpr, lazy, n_consts):  # pylint: disable=unused-argument
 
 
 @CollectResourceOps.register_primitive(ctrl_transform_prim)
-def _(self, *invals, n_control, jaxpr, n_consts, **params):
+def _ctrl_transform_prim(self, *invals, n_control, jaxpr, n_consts, **params):
     """Collect all operations in the target plxpr and create controlled resource ops with them."""
 
     consts = invals[:n_consts]
@@ -83,11 +85,10 @@ def explore_all_branches(self, *invals, jaxpr_branches, consts_slices, args_slic
     outvals = ()
     for _, jaxpr, consts_slice in zip(conditions, jaxpr_branches, consts_slices):
         consts = invals[consts_slice]
-        if jaxpr is not None:
-            dummy = copy(self).eval(jaxpr, consts, *args)
-            # The cond_prim may or may not expect outvals, so we need to check whether
-            # the first branch returns something significant. If so, we use the return
-            # value of the first branch as the outvals of this cond_prim.
-            if dummy and not outvals:
-                outvals = dummy
+        dummy = copy(self).eval(jaxpr, consts, *args)
+        # The cond_prim may or may not expect outvals, so we need to check whether
+        # the first branch returns something significant. If so, we use the return
+        # value of the first branch as the outvals of this cond_prim.
+        if dummy and not outvals:
+            outvals = dummy
     return outvals
