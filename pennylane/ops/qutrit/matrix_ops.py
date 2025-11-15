@@ -15,11 +15,11 @@
 This submodule contains the qutrit quantum operations that
 accept a unitary matrix as a parameter.
 """
-# pylint:disable=abstract-method,arguments-differ,protected-access
+
 import warnings
 
 import pennylane as qml
-from pennylane.operation import AnyWires, Operation
+from pennylane.operation import Operation
 from pennylane.wires import Wires
 
 
@@ -49,9 +49,6 @@ class QutritUnitary(Operation):
     >>> print(example_circuit())
     [0.70710678+0.j 0.70710678+0.j 0.        +0.j]
     """
-
-    num_wires = AnyWires
-    """int: Number of wires that the operator acts on."""
 
     num_params = 1
     """int: Number of trainable parameters that the operator depends on."""
@@ -172,6 +169,9 @@ class ControlledQutritUnitary(QutritUnitary):
 
     >>> U = np.array([[1, 1, 0], [1, -1, 0], [0, 0, np.sqrt(2)]]) / np.sqrt(2)
     >>> qml.ControlledQutritUnitary(U, control_wires=[0, 1], wires=2)
+    ControlledQutritUnitary(array([[ 0.70710678,  0.70710678,  0.        ],
+           [ 0.70710678, -0.70710678,  0.        ],
+           [ 0.        ,  0.        ,  1.        ]]), wires=[0, 1, 2])
 
     By default, controlled operations apply the desired gate if the control qutrit(s)
     are all in the state :math:`\vert 2\rangle`. However, there are some situations where
@@ -184,10 +184,10 @@ class ControlledQutritUnitary(QutritUnitary):
     second is in state ``1``, and the third in state ``2``, we can write:
 
     >>> qml.ControlledQutritUnitary(U, control_wires=[0, 1, 2], wires=3, control_values='012')
+    ControlledQutritUnitary(array([[ 0.70710678,  0.70710678,  0.        ],
+           [ 0.70710678, -0.70710678,  0.        ],
+           [ 0.        ,  0.        ,  1.        ]]), wires=[0, 1, 2, 3])
     """
-
-    num_wires = AnyWires
-    """int: Number of wires that the operator acts on."""
 
     num_params = 1
     """int: Number of trainable parameters that the operator depends on."""

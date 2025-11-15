@@ -358,10 +358,16 @@ class TestMidCircuitMeasurements:
         assert drawing == expected_drawing
 
     @pytest.mark.parametrize(
-        "op", [qml.GlobalPhase(0.1), qml.Identity(), qml.Snapshot(), qml.Barrier()]
+        "op, grouped",
+        [
+            (qml.GlobalPhase(0.1), True),
+            (qml.Identity(), True),
+            (qml.Snapshot(), False),
+            (qml.Barrier(), False),
+        ],
     )
     @pytest.mark.parametrize("decimals", [None, 2])
-    def test_draw_all_wire_ops(self, op, decimals):
+    def test_draw_all_wire_ops(self, op, grouped, decimals):
         """Test that operators acting on all wires are drawn correctly"""
 
         def func():
@@ -376,9 +382,14 @@ class TestMidCircuitMeasurements:
         # end of the drawing depends on the length of each individual line
         drawing = qml.draw(func, decimals=decimals)().strip()
         label = op.label(decimals=decimals).replace("\n", "")
-        expected_drawing = (
-            f"0: ──X──┤↗├──X──{label}─┤  <Z>\n1: ──X───║───║──{label}─┤     \n         ╚═══╝"
-        )
+        if grouped:
+            expected_drawing = (
+                f"0: ──X──┤↗├──X─╭{label}─┤  <Z>\n1: ──X───║───║─╰{label}─┤     \n         ╚═══╝"
+            )
+        else:
+            expected_drawing = (
+                f"0: ──X──┤↗├──X──{label}─┤  <Z>\n1: ──X───║───║──{label}─┤     \n         ╚═══╝"
+            )
 
         assert drawing == expected_drawing
 
@@ -889,8 +900,12 @@ class TestMidCircuitMeasurements:
 
 
 class TestLevelExpansionStrategy:
+    """Tests for the level expansion strategy in the draw function."""
+
     @pytest.fixture
     def transforms_circuit(self):
+        """Fixture for a circuit with transforms applied."""
+
         @qml.transforms.merge_rotations
         @qml.transforms.cancel_inverses
         @qml.qnode(qml.device("default.qubit"), diff_method="parameter-shift")
@@ -939,6 +954,7 @@ class TestLevelExpansionStrategy:
         ],
     )
     def test_equivalent_levels(self, transforms_circuit, var1, var2, expected):
+        """Test that drawing the circuit at different levels produces equivalent results."""
         order = [2, 1, 0]
         weights = pnp.array([[1.0, 20]])
 

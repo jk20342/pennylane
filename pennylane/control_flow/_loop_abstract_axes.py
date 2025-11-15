@@ -21,9 +21,8 @@ as they are specific to just ``for_loop`` and ``while_loop``.
 """
 
 from collections import namedtuple
-from typing import Any, Callable, Optional
-
-import numpy as np
+from collections.abc import Callable
+from typing import Any
 
 from pennylane.typing import TensorLike
 
@@ -97,14 +96,16 @@ def get_dummy_arg(arg):
         return arg
     # add small, non-trivial size 2 as a concrete stand-in for dynamic axes
     shape = tuple(s if isinstance(s, int) else 2 for s in arg.shape)
-    return np.empty(shape=shape, dtype=arg.dtype)
+    from jax.numpy import empty  # pylint: disable=import-outside-toplevel
+
+    return empty(shape=shape, dtype=arg.dtype)
 
 
 def validate_no_resizing_returns(
-    jaxpr: "jax.core.Jaxpr",
+    jaxpr: "jax.extend.core.Jaxpr",
     locations: list[list[AbstractShapeLocation]],
     name: str = "while_loop",
-) -> Optional[str]:
+) -> str | None:
     """Validate that all jaxpr outputs that should have the same shape as specified in ``locations``
     continue to have the same shape.  Returns a string with an error message so we can
     either decide to raise the error, or try again with different settings.

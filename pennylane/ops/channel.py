@@ -17,9 +17,11 @@ This module contains the available built-in noisy
 quantum channels supported by PennyLane, as well as their conventions.
 """
 import warnings
+from collections.abc import Hashable, Iterable
+from typing import Any
 
 from pennylane import math as np
-from pennylane.operation import AnyWires, Channel
+from pennylane.operation import Channel
 from pennylane.wires import Wires, WiresLike
 
 
@@ -76,8 +78,10 @@ class AmplitudeDamping(Channel):
         **Example**
 
         >>> qml.AmplitudeDamping.compute_kraus_matrices(0.5)
-        [array([[1., 0.], [0., 0.70710678]]),
-         array([[0., 0.70710678], [0., 0.]])]
+        [array([[1.        , 0.        ],
+                [0.        , 0.70710678]]),
+         array([[0.        , 0.70710678],
+                [0.        , 0.        ]])]
         """
         if not np.is_abstract(gamma) and not 0.0 <= gamma <= 1.0:
             raise ValueError("gamma must be in the interval [0,1].")
@@ -321,15 +325,21 @@ class DepolarizingChannel(Channel):
         **Example**
 
         >>> qml.DepolarizingChannel.compute_kraus_matrices(0.5)
-        [array([[0.70710678, 0.        ], [0.        , 0.70710678]]),
-         array([[0.        , 0.40824829], [0.40824829, 0.        ]]),
-         array([[0.+0.j        , 0.-0.40824829j], [0.+0.40824829j, 0.+0.j        ]]),
-         array([[ 0.40824829,  0.        ], [ 0.        , -0.40824829]])]
+        [array([[0.70710678+0.j, 0.        +0.j],
+                [0.        +0.j, 0.70710678+0.j]]),
+         array([[0.        +0.j, 0.40824829+0.j],
+                [0.40824829+0.j, 0.        +0.j]]),
+         array([[0.+0.j        , 0.-0.40824829j],
+                [0.+0.40824829j, 0.+0.j        ]]),
+         array([[ 0.40824829+0.j,  0.        +0.j],
+                [ 0.        +0.j, -0.40824829+0.j]])]
         """
         if not np.is_abstract(p) and not 0.0 <= p <= 1.0:
             raise ValueError("p must be in the interval [0,1]")
 
-        if np.get_interface(p) == "tensorflow":
+        if (
+            np.get_interface(p) == "tensorflow"
+        ):  # pragma: no cover (TensorFlow tests were disabled during deprecation)
             p = np.cast_like(p, 1j)
 
         K0 = np.sqrt(1 - p + np.eps) * np.convert_like(np.eye(2, dtype=complex), p)
@@ -542,7 +552,7 @@ class PauliError(Channel):
     * Number of parameters: 3
 
     Args:
-        operators (str): The Pauli operators acting on the specified (groups of) wires
+        operators (str): The Pauli operators (``'I'``, ``'X'``, ``'Y'``, or ``'Z'``) acting on the specified (groups of) wires
         p (float): The probability of the operator being applied
         wires (Sequence[int] or int): The wires the channel acts on
         id (str or None): String representing the operation (optional)
@@ -559,19 +569,21 @@ class PauliError(Channel):
                [0.70710678, 0.        ]])
     """
 
-    num_wires = AnyWires
-    """int: Number of wires that the operator acts on."""
+    num_params = 1
 
-    num_params = 2
+    resource_keys = {
+        "operators",
+    }
+
     """int: Number of trainable parameters that the operator depends on."""
 
     def __init__(self, operators, p, wires: WiresLike, id=None):
         wires = Wires(wires)
-        super().__init__(operators, p, wires=wires, id=id)
+        super().__init__(p, wires=wires, id=id)
 
         # check if the specified operators are legal
-        if not set(operators).issubset({"X", "Y", "Z"}):
-            raise ValueError("The specified operators need to be either of 'X', 'Y' or 'Z'")
+        if not set(operators).issubset({"X", "Y", "Z", "I"}):
+            raise ValueError("The specified operators need to be either of 'I', 'X', 'Y' or 'Z'.")
 
         # check if probabilities are legal
         if not np.is_abstract(p) and not 0.0 <= p <= 1.0:
@@ -581,6 +593,8 @@ class PauliError(Channel):
         if len(self.wires) != len(operators):
             raise ValueError("The number of operators must match the number of wires")
 
+        self.hyperparameters["operators"] = operators
+
         nq = len(self.wires)
 
         if nq > 20:
@@ -588,8 +602,23 @@ class PauliError(Channel):
                 f"The resulting Kronecker matrices will have dimensions {2**(nq)} x {2**(nq)}.\nThis equals {2**nq*2**nq*8/1024**3} GB of physical memory for each matrix."
             )
 
+    @classmethod
+    def _unflatten(cls, data: Iterable[Any], metadata: Hashable):
+        """
+        Constructs a PauliError from its serialized version.
+
+        Args:
+            data (Iterable[Any]): the data of the PauliError.
+            metadata (Hashable): the hyperparameters of the PauliError.
+
+        Returns:
+            A constructed PauliError.
+        """
+        hyperparameters_dict = dict(metadata[1])
+        return PauliError(hyperparameters_dict["operators"], data[0], wires=metadata[0])
+
     @staticmethod
-    def compute_kraus_matrices(operators, p):  # pylint:disable=arguments-differ
+    def compute_kraus_matrices(p, operators):  # pylint:disable=arguments-differ
         """Kraus matrices representing the PauliError channel.
 
         Args:
@@ -601,7 +630,7 @@ class PauliError(Channel):
 
         **Example**
 
-        >>> qml.PauliError.compute_kraus_matrices("X", 0.5)
+        >>> qml.PauliError.compute_kraus_matrices(0.5, "X")
         [array([[0.70710678, 0.        ], [0.        , 0.70710678]]),
          array([[0.        , 0.70710678], [0.70710678, 0.        ]])]
         """
@@ -618,6 +647,7 @@ class PauliError(Channel):
                 p = np.cast_like(p, 1j)
 
         ops = {
+            "I": np.convert_like(np.cast_like(np.eye(2), p), p),
             "X": np.convert_like(np.cast_like(np.array([[0, 1], [1, 0]]), p), p),
             "Y": np.convert_like(np.cast_like(np.array([[0, -1j], [1j, 0]]), p), p),
             "Z": np.convert_like(np.cast_like(np.array([[1, 0], [0, -1]]), p), p),
@@ -713,7 +743,6 @@ class QubitChannel(Channel):
         id (str or None): String representing the operation (optional)
     """
 
-    num_wires = AnyWires
     grad_method = None
 
     def __init__(self, K_list, wires: WiresLike, id=None):
@@ -765,7 +794,7 @@ class QubitChannel(Channel):
         **Example**
 
         >>> K_list = qml.PhaseFlip(0.5, wires=0).kraus_matrices()
-        >>> res = qml.QubitChannel.compute_kraus_matrices(K_list)
+        >>> res = qml.QubitChannel.compute_kraus_matrices(K_list)[0]
         >>> all(np.allclose(r, k) for r, k  in zip(res, K_list))
         True
         """
@@ -886,10 +915,18 @@ class ThermalRelaxationError(Channel):
         **Example**
 
         >>> qml.ThermalRelaxationError.compute_kraus_matrices(0.1, 1.2, 1.3, 0.1)
-        [array([[0.        , 0.        ], [0.08941789, 0.        ]]),
-         array([[0.        , 0.26825366], [0.        , 0.        ]]),
-         array([[-0.12718544,  0.        ], [ 0.        ,  0.13165421]]),
-         array([[0.98784022, 0.        ], [0.        , 0.95430977]])]
+        [array([[0.        , 0.        ],
+                [0.08941789, 0.        ]]),
+         array([[0.        , 0.26825366],
+                [0.        , 0.        ]]),
+         array([[-0.12718544,  0.        ],
+                [ 0.        ,  0.13165421]]),
+         array([[0.98784022, 0.        ],
+                [0.        , 0.95430977]]),
+         array([[0., 0.],
+                [0., 0.]]),
+         array([[0., 0.],
+                [0., 0.]])]
         """
         if not np.is_abstract(pe) and not 0.0 <= pe <= 1.0:
             raise ValueError("pe must be between 0 and 1.")

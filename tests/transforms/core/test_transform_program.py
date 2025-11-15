@@ -18,6 +18,7 @@ import pytest
 import rustworkx as rx
 
 import pennylane as qml
+from pennylane.exceptions import QuantumFunctionError
 from pennylane.tape import QuantumScript, QuantumScriptBatch
 from pennylane.transforms.core import (
     TransformContainer,
@@ -117,14 +118,14 @@ class TestTransformProgramDunders:
         empty_prog = TransformProgram()
         assert not empty_prog
 
-        transform1 = TransformContainer(transform=first_valid_transform)
-        populated_prog = TransformContainer((transform1,))
+        transform1 = TransformContainer(qml.transform(first_valid_transform))
+        populated_prog = TransformProgram((transform1,))
         assert populated_prog
 
     def test_iter_program(self):
         """Test iteration over the transform program."""
         transform_program = TransformProgram()
-        transform1 = TransformContainer(transform=first_valid_transform)
+        transform1 = TransformContainer(qml.transform(first_valid_transform))
 
         for _ in range(10):
             transform_program.push_back(transform1)
@@ -138,9 +139,9 @@ class TestTransformProgramDunders:
     def test_getitem(self):
         """Tests for the getitem dunder."""
 
-        t0 = TransformContainer(transform=first_valid_transform)
-        t1 = TransformContainer(transform=second_valid_transform)
-        t2 = TransformContainer(transform=informative_transform)
+        t0 = TransformContainer(qml.transform(first_valid_transform))
+        t1 = TransformContainer(transform=qml.transform(second_valid_transform))
+        t2 = TransformContainer(transform=qml.transform(informative_transform))
         program = TransformProgram([t0, t1, t2])
 
         assert program[0] == t0
@@ -153,9 +154,9 @@ class TestTransformProgramDunders:
     def test_contains(self):
         """Test that we can check whether a transform or transform container exists in a transform."""
 
-        t0 = TransformContainer(transform=first_valid_transform)
-        t1 = TransformContainer(transform=second_valid_transform)
-        t2 = TransformContainer(transform=informative_transform)
+        t0 = TransformContainer(transform=qml.transform(first_valid_transform))
+        t1 = TransformContainer(transform=qml.transform(second_valid_transform))
+        t2 = TransformContainer(transform=qml.transform(informative_transform))
         program = TransformProgram([t0, t1, t2])
 
         assert t0 in program
@@ -175,11 +176,11 @@ class TestTransformProgramDunders:
     def test_add_single_programs(self):
         """Test adding two transform programs"""
         transform_program1 = TransformProgram()
-        transform1 = TransformContainer(transform=first_valid_transform)
+        transform1 = TransformContainer(transform=qml.transform(first_valid_transform))
         transform_program1.push_back(transform1)
 
         transform_program2 = TransformProgram()
-        transform2 = TransformContainer(transform=second_valid_transform)
+        transform2 = TransformContainer(transform=qml.transform(second_valid_transform))
         transform_program2.push_back(transform2)
 
         transform_program = transform_program1 + transform_program2
@@ -204,8 +205,8 @@ class TestTransformProgramDunders:
 
     def test_add_two_programs(self):
         """Test adding two transform programs"""
-        transform1 = TransformContainer(transform=first_valid_transform)
-        transform2 = TransformContainer(transform=second_valid_transform)
+        transform1 = TransformContainer(transform=qml.transform(first_valid_transform))
+        transform2 = TransformContainer(transform=qml.transform(second_valid_transform))
 
         transform_program1 = TransformProgram()
         transform_program1.push_back(transform1)
@@ -238,8 +239,10 @@ class TestTransformProgramDunders:
     def test_add_both_final_transform_programs(self):
         """Test that an error is raised if two programs are added when both have
         terminal transforms"""
-        transform1 = TransformContainer(transform=first_valid_transform)
-        transform2 = TransformContainer(transform=second_valid_transform, final_transform=True)
+        transform1 = TransformContainer(transform=qml.transform(first_valid_transform))
+        transform2 = TransformContainer(
+            transform=qml.transform(second_valid_transform, final_transform=True)
+        )
 
         transform_program1 = TransformProgram()
         transform_program1.push_back(transform1)
@@ -257,8 +260,10 @@ class TestTransformProgramDunders:
     def test_add_programs_with_one_final_transform(self):
         """Test that transform programs are added correctly when one of them has a terminal
         transform."""
-        transform1 = TransformContainer(transform=first_valid_transform)
-        transform2 = TransformContainer(transform=second_valid_transform, final_transform=True)
+        transform1 = TransformContainer(transform=qml.transform(first_valid_transform))
+        transform2 = TransformContainer(
+            transform=qml.transform(second_valid_transform, final_transform=True)
+        )
 
         transform_program1 = TransformProgram()
         transform_program1.push_back(transform1)
@@ -295,8 +300,8 @@ class TestTransformProgramDunders:
         """Test the string representation of a program."""
         transform_program = TransformProgram()
 
-        transform1 = TransformContainer(transform=first_valid_transform)
-        transform2 = TransformContainer(transform=second_valid_transform)
+        transform1 = TransformContainer(transform=qml.transform(first_valid_transform))
+        transform2 = TransformContainer(transform=qml.transform(second_valid_transform))
 
         transform_program.push_back(transform1)
         transform_program.push_back(transform2)
@@ -313,11 +318,9 @@ class TestTransformProgramDunders:
 
     def test_equality(self):
         """Tests that we can compare TransformProgram objects with the '==' and '!=' operators."""
-        t1 = TransformContainer(qml.transforms.compile.transform, kwargs={"num_passes": 2})
-        t2 = TransformContainer(qml.transforms.compile.transform, kwargs={"num_passes": 2})
-        t3 = TransformContainer(
-            qml.transforms.transpile.transform, kwargs={"coupling_map": [(0, 1), (1, 2)]}
-        )
+        t1 = TransformContainer(qml.transforms.compile, kwargs={"num_passes": 2})
+        t2 = TransformContainer(qml.transforms.compile, kwargs={"num_passes": 2})
+        t3 = TransformContainer(qml.transforms.transpile, kwargs={"coupling_map": [(0, 1), (1, 2)]})
 
         p1 = TransformProgram([t1, t3])
         p2 = TransformProgram([t2, t3])
@@ -330,9 +333,7 @@ class TestTransformProgramDunders:
         assert p1 != t1
 
         # Test inequality with different transforms
-        t4 = TransformContainer(
-            qml.transforms.transpile.transform, kwargs={"coupling_map": [(0, 1), (2, 3)]}
-        )
+        t4 = TransformContainer(qml.transforms.transpile, kwargs={"coupling_map": [(0, 1), (2, 3)]})
         p4 = TransformProgram([t1, t4])
         assert p1 != p4
 
@@ -358,13 +359,13 @@ class TestTransformProgram:
         program = TransformProgram()
         program.add_transform(transform(first_valid_transform))
         program.add_transform(transform(second_valid_transform))
-        assert program.get_last() == TransformContainer(transform=second_valid_transform)
+        assert program.get_last() == TransformContainer(transform=transform(second_valid_transform))
 
     def test_push_back(self):
         """Test to push back multiple transforms into a program and also the different methods of a program."""
         transform_program = TransformProgram()
 
-        transform1 = TransformContainer(transform=first_valid_transform)
+        transform1 = TransformContainer(transform=transform(first_valid_transform))
         transform_program.push_back(transform1)
 
         assert not transform_program.is_empty()
@@ -372,7 +373,7 @@ class TestTransformProgram:
         assert isinstance(transform_program[0], TransformContainer)
         assert transform_program[0].transform is first_valid_transform
 
-        transform2 = TransformContainer(transform=second_valid_transform)
+        transform2 = TransformContainer(transform=transform(second_valid_transform))
         transform_program.push_back(transform2)
 
         assert not transform_program.is_empty()
@@ -447,7 +448,7 @@ class TestTransformProgram:
         """Test the pop front method of the transform program."""
         transform_program = TransformProgram()
 
-        transform1 = TransformContainer(transform=first_valid_transform)
+        transform1 = TransformContainer(transform=transform(first_valid_transform))
         transform_program.push_back(transform1)
 
         assert not transform_program.is_empty()
@@ -464,7 +465,7 @@ class TestTransformProgram:
         """Test to insert a transform (container) at the beginning of a transform program."""
         transform_program = TransformProgram()
 
-        transform1 = TransformContainer(transform=first_valid_transform)
+        transform1 = TransformContainer(transform=transform(first_valid_transform))
         transform_program.push_back(transform1)
 
         assert not transform_program.is_empty()
@@ -472,7 +473,7 @@ class TestTransformProgram:
         assert isinstance(transform_program[0], TransformContainer)
         assert transform_program[0].transform is first_valid_transform
 
-        transform2 = TransformContainer(transform=second_valid_transform)
+        transform2 = TransformContainer(transform=transform(second_valid_transform))
         transform_program.insert_front(transform2)
 
         assert not transform_program.is_empty()
@@ -482,7 +483,9 @@ class TestTransformProgram:
         assert isinstance(transform_program[1], TransformContainer)
         assert transform_program[1] is transform1
 
-        transform3 = TransformContainer(transform=second_valid_transform, is_informative=True)
+        transform3 = TransformContainer(
+            transform=transform(second_valid_transform, is_informative=True)
+        )
 
         with pytest.raises(
             TransformError,
@@ -538,17 +541,17 @@ class TestTransformProgram:
     def test_valid_transforms(self):
         """Test adding transforms to a program with a terminal transform."""
         transform_program = TransformProgram()
-        transform1 = TransformContainer(transform=first_valid_transform, is_informative=True)
+        transform1 = TransformContainer(qml.transform(first_valid_transform, is_informative=True))
         transform_program.push_back(transform1)
 
-        t_normal = TransformContainer(transform=second_valid_transform)
+        t_normal = TransformContainer(qml.transform(second_valid_transform))
         transform_program.push_back(t_normal)
         print(transform_program)
         assert len(transform_program) == 2
         assert transform_program[0] is t_normal
         assert transform_program[1] is transform1
 
-        t_normal2 = TransformContainer(transform=first_valid_transform)
+        t_normal2 = TransformContainer(qml.transform(first_valid_transform))
         transform_program.push_back(t_normal2)
         assert transform_program[0] is t_normal
         assert transform_program[1] is t_normal2
@@ -559,8 +562,9 @@ class TestTransformProgram:
         ):
             transform_program.push_back(transform1)
 
-        transform2 = TransformContainer(transform=second_valid_transform, final_transform=True)
-
+        transform2 = TransformContainer(
+            transform=qml.transform(second_valid_transform, final_transform=True)
+        )
         with pytest.raises(
             TransformError, match="The transform program already has a terminal transform."
         ):
@@ -582,9 +586,11 @@ class TestClassicalCotransfroms:
         program1.set_classical_component(f, (1,), {"a": 2})
         assert program1.cotransform_cache is None
 
-        hybrid_t = TransformContainer(
-            qml.gradients.param_shift, (), {"hybrid": True}, classical_cotransform=lambda *args: 0
+        new_t = qml.transform(
+            qml.gradients.param_shift.transform, classical_cotransform=lambda *args: 0
         )
+
+        hybrid_t = TransformContainer(new_t, (), {"hybrid": True})
         program2 = TransformProgram((hybrid_t,))
         program2.set_classical_component(f, (1,), {"a": 2})
         assert program2.cotransform_cache == CotransformCache(f, (1,), {"a": 2})
@@ -607,13 +613,12 @@ class TestClassicalCotransfroms:
             qml.RX(x, 0)
             return qml.expval(qml.Z(0))
 
-        program = TransformProgram()
-        program.add_transform(qml.gradients.param_shift, hybrid=True)
-        program.set_classical_component(circuit, (arg,), {})
+        circuit = qml.gradients.param_shift(circuit, hybrid=True)
+        circuit.transform_program.set_classical_component(circuit, (arg,), {})
 
         tape = qml.tape.QuantumScript([], [])
-        with pytest.raises(qml.QuantumFunctionError, match="No trainable parameters"):
-            program((tape,))
+        with pytest.raises(QuantumFunctionError, match="No trainable parameters"):
+            circuit.transform_program((tape,))
 
 
 class TestTransformProgramCall:
@@ -649,7 +654,7 @@ class TestTransformProgramCall:
                 qml.tape.QuantumScript(new_ops, tape.measurements, shots=tape.shots),
             ), single_null_postprocessing
 
-        container = TransformContainer(remove_operation_at_index, kwargs={"index": 1})
+        container = TransformContainer(transform(remove_operation_at_index), kwargs={"index": 1})
         prog = TransformProgram((container,))
 
         tape0 = qml.tape.QuantumScript(
@@ -693,8 +698,8 @@ class TestTransformProgramCall:
         def transform_mul(tape: qml.tape.QuantumTape):
             return (tape,), scale_two
 
-        container1 = TransformContainer(transform_add)
-        container2 = TransformContainer(transform_mul)
+        container1 = TransformContainer(transform(transform_add))
+        container2 = TransformContainer(transform(transform_mul))
         prog = TransformProgram((container1, container2))
 
         tape0 = qml.tape.QuantumScript([], [qml.expval(qml.PauliZ(0))], shots=100)
@@ -777,7 +782,7 @@ class TestTransformProgramCall:
 
             return new_tapes, sum_measurements
 
-        container = TransformContainer(split_sum_terms)
+        container = TransformContainer(transform(split_sum_terms))
         prog = TransformProgram((container,))
 
         op = qml.Rot(1.2, 2.3, 3.4, wires=0)
@@ -810,8 +815,7 @@ class TestTransformProgramCall:
         dummy_results = (1, 2, 3, 4, 5, 1, 1, 1, 1, 1)
         assert fn(dummy_results) == (3, 12, 5)
 
-    @pytest.mark.jax
-    @pytest.mark.usefixtures("enable_disable_plxpr")
+    @pytest.mark.capture
     def test_call_jaxpr_empty(self):
         """Test that calling an empty TransformProgram with jaxpr returns untransformed ClosedJaxpr."""
         # pylint: disable=import-outside-toplevel
@@ -833,7 +837,7 @@ class TestTransformProgramCall:
 
         jaxpr = jax.make_jaxpr(f)(1.5, 5)
         transformed_jaxpr = program(jaxpr.jaxpr, jaxpr.consts, 1.5, 5)
-        assert isinstance(transformed_jaxpr, jax.core.ClosedJaxpr)
+        assert isinstance(transformed_jaxpr, jax.extend.core.ClosedJaxpr)
         assert transformed_jaxpr.consts == jaxpr.consts
 
         for eqn1, eqn2 in zip(jaxpr.eqns, transformed_jaxpr.eqns, strict=True):
@@ -842,8 +846,7 @@ class TestTransformProgramCall:
             # seperately, they will not be equal (hence the string check)
             assert str(eqn1.params) == str(eqn2.params)
 
-    @pytest.mark.jax
-    @pytest.mark.usefixtures("enable_disable_plxpr")
+    @pytest.mark.capture
     def test_call_jaxpr_single_transform(self):
         """Test that calling a TransformProgram with a single transform with jaxpr works correctly."""
         # pylint: disable=import-outside-toplevel
@@ -861,7 +864,7 @@ class TestTransformProgramCall:
 
         jaxpr = jax.make_jaxpr(f)()
         transformed_jaxpr = program(jaxpr.jaxpr, jaxpr.consts)
-        assert isinstance(transformed_jaxpr, jax.core.ClosedJaxpr)
+        assert isinstance(transformed_jaxpr, jax.extend.core.ClosedJaxpr)
         assert transformed_jaxpr.consts == jaxpr.consts
 
         assert len(transformed_jaxpr.eqns) == 2
@@ -869,8 +872,7 @@ class TestTransformProgramCall:
         assert transformed_jaxpr.eqns[0].primitive == qml.PauliZ._primitive
         assert transformed_jaxpr.eqns[1].primitive == qml.measurements.ExpectationMP._obs_primitive
 
-    @pytest.mark.jax
-    @pytest.mark.usefixtures("enable_disable_plxpr")
+    @pytest.mark.capture
     def test_call_jaxpr_multiple_transforms(self):
         """Test that calling a TransformProgram with multiple transforms with jaxpr works correctly."""
         # pylint: disable=import-outside-toplevel
@@ -881,7 +883,7 @@ class TestTransformProgramCall:
         program.add_transform(qml.transforms.defer_measurements, num_wires=3)
         program.add_transform(
             qml.transforms.decompose,
-            gate_set=lambda op: op.name != "IsingXX",
+            stopping_condition=lambda op: op.name != "IsingXX",
         )
 
         def f():
@@ -893,7 +895,7 @@ class TestTransformProgramCall:
 
         jaxpr = jax.make_jaxpr(f)()
         transformed_jaxpr = program(jaxpr.jaxpr, jaxpr.consts)
-        assert isinstance(transformed_jaxpr, jax.core.ClosedJaxpr)
+        assert isinstance(transformed_jaxpr, jax.extend.core.ClosedJaxpr)
 
         # pylint: disable=protected-access
         isingxx_decomp = [qml.CNOT(wires=[0, 1]), qml.RX(0.5, wires=[0]), qml.CNOT(wires=[0, 1])]

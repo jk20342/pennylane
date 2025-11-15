@@ -19,6 +19,7 @@ import pytest
 
 import pennylane as qml
 from pennylane import numpy as np
+from pennylane.exceptions import QuantumFunctionError
 from pennylane.gradients.parameter_shift_hessian import (
     _collect_recipes,
     _generate_offdiag_tapes,
@@ -1190,7 +1191,7 @@ class TestParameterShiftHessianQNode:
         z = np.array([0.3, 0.4], requires_grad=True)
 
         expected = tuple(
-            qml.jacobian(qml.jacobian(cost, argnum=i), argnum=i)(x, y, z) for i in range(3)
+            qml.jacobian(qml.jacobian(cost, argnums=i), argnums=i)(x, y, z) for i in range(3)
         )
         hessian = qml.gradients.param_shift_hessian(circuit)(x, y, z)
 
@@ -1437,7 +1438,7 @@ class TestParameterShiftHessianQNode:
             return qml.expval(qml.PauliZ(0) @ qml.PauliZ(1))
 
         weights = [0.1, 0.2]
-        with pytest.raises(qml.QuantumFunctionError, match="No trainable parameters."):
+        with pytest.raises(QuantumFunctionError, match="No trainable parameters."):
             qml.gradients.param_shift_hessian(circuit)(weights)
 
     @pytest.mark.torch
@@ -1454,7 +1455,7 @@ class TestParameterShiftHessianQNode:
             return qml.expval(qml.PauliZ(0) @ qml.PauliZ(1))
 
         weights = [0.1, 0.2]
-        with pytest.raises(qml.QuantumFunctionError, match="No trainable parameters."):
+        with pytest.raises(QuantumFunctionError, match="No trainable parameters."):
             qml.gradients.param_shift_hessian(circuit)(weights)
 
     @pytest.mark.tf
@@ -1471,7 +1472,7 @@ class TestParameterShiftHessianQNode:
             return qml.expval(qml.PauliZ(0) @ qml.PauliZ(1))
 
         weights = [0.1, 0.2]
-        with pytest.raises(qml.QuantumFunctionError, match="No trainable parameters."):
+        with pytest.raises(QuantumFunctionError, match="No trainable parameters."):
             qml.gradients.param_shift_hessian(circuit)(weights)
 
     @pytest.mark.jax
@@ -1488,7 +1489,7 @@ class TestParameterShiftHessianQNode:
             return qml.expval(qml.PauliZ(0) @ qml.PauliZ(1))
 
         weights = [0.1, 0.2]
-        with pytest.raises(qml.QuantumFunctionError, match="No trainable parameters."):
+        with pytest.raises(QuantumFunctionError, match="No trainable parameters."):
             qml.gradients.param_shift_hessian(circuit)(weights)
 
     def test_all_zero_diff_methods(self):

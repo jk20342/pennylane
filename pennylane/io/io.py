@@ -16,8 +16,17 @@ This module contains functions to load circuits from other frameworks as
 PennyLane templates.
 """
 from collections import defaultdict
+from collections.abc import Callable
 from importlib import metadata
 from sys import version_info
+
+has_openqasm = True
+try:
+    import openqasm3
+
+    from pennylane.io.qasm_interpreter import QasmInterpreter
+except (ModuleNotFoundError, ImportError) as import_error:  # pragma: no cover
+    has_openqasm = False  # pragma: no cover
 
 # Error message to show when the PennyLane-Qiskit plugin is required but missing.
 _MISSING_QISKIT_PLUGIN_MESSAGE = (
@@ -32,7 +41,7 @@ _MISSING_QISKIT_PLUGIN_MESSAGE = (
 __plugin_devices = (
     defaultdict(tuple, metadata.entry_points())["pennylane.io"]
     if version_info[:2] == (3, 9)
-    else metadata.entry_points(group="pennylane.io")  # pylint:disable=unexpected-keyword-arg
+    else metadata.entry_points(group="pennylane.io")
 )
 plugin_converters = {entry.name: entry for entry in __plugin_devices}
 
@@ -467,6 +476,24 @@ def from_qasm(quantum_circuit: str, measurements=None):
     Loads quantum circuits from a QASM string using the converter in the
     PennyLane-Qiskit plugin.
 
+    .. warning::
+
+        ``from_qasm`` returns a **quantum function** that must be called.
+
+        .. code-block:: python
+
+            # INCORRECT: no operations will end up in the circuit
+            @qml.qnode(dev)
+            def circuit_from_qasm():
+                qml.from_qasm(qasm_string)
+                return qml.probs()
+
+            # CORRECT: from_qasm is called
+            @qml.qnode(dev)
+            def circuit_from_qasm():
+                qml.from_qasm(qasm_string)()
+                return qml.probs()
+
     Args:
         quantum_circuit (str): a QASM string containing a valid quantum circuit
         measurements (None | MeasurementProcess | list[MeasurementProcess]): an optional PennyLane
@@ -475,8 +502,13 @@ def from_qasm(quantum_circuit: str, measurements=None):
             in the input circuit are returned. See *Removing terminal measurements* for details.
 
     Returns:
-        function: the PennyLane quantum function created based on the QASM string. This function itself returns the mid-circuit measurements plus the terminal measurements by default (``measurements=None``), and returns **only** the measurements from the ``measurements`` argument otherwise.
+        function: the PennyLane quantum function created based on the QASM string. This function itself returns the
+        mid-circuit measurements plus the terminal measurements by default (``measurements=None``),
+        and returns **only** the measurements from the ``measurements`` argument otherwise.
 
+    .. seealso:: :func:`~.from_qasm3`, which relies on the ``openqasm3`` and ``openqasm3[parser]`` packages
+        instead of ``pennylane-qiskit``, and supports newer syntax features.
+        
     **Example:**
 
     .. code-block:: python
@@ -504,7 +536,8 @@ def from_qasm(quantum_circuit: str, measurements=None):
     MeasurementValue(wires=[0]),
     MeasurementValue(wires=[1]))
 
-    A list of measurements can also be passed directly to ``from_qasm`` using the ``measurements`` argument, making it possible to create a PennyLane circuit with :class:`qml.QNode <pennylane.QNode>`.
+    A list of measurements can also be passed directly to ``from_qasm`` using the ``measurements`` argument, making
+    it possible to create a PennyLane circuit with :class:`qml.QNode <pennylane.QNode>`.
 
     .. code-block:: python
 
@@ -519,7 +552,8 @@ def from_qasm(quantum_circuit: str, measurements=None):
     .. details::
         :title: Removing terminal measurements
 
-        To remove all terminal measurements, set ``measurements=[]``. This removes the existing terminal measurements and keeps the mid-circuit measurements.
+        To remove all terminal measurements, set ``measurements=[]``. This removes the existing terminal
+        measurements and keeps the mid-circuit measurements.
 
         .. code-block:: python
 
@@ -534,7 +568,9 @@ def from_qasm(quantum_circuit: str, measurements=None):
         >>> loaded_circuit()
         []
 
-        Note that mid-circuit measurements are always applied, but are only returned when ``measurements=None``. This can be exemplified by using the ``loaded_circuit`` without the terminal measurements within a ``QNode``.
+        Note that mid-circuit measurements are always applied, but are only returned when
+        ``measurements=None``. This can be exemplified by using the ``loaded_circuit``
+        without the terminal measurements within a ``QNode``.
 
         .. code-block:: python
 
@@ -553,7 +589,8 @@ def from_qasm(quantum_circuit: str, measurements=None):
     .. details::
         :title: Using conditional operations
 
-        We can take advantage of the mid-circuit measurements inside the QASM code by calling the returned function within a :class:`qml.QNode <pennylane.QNode>`.
+        We can take advantage of the mid-circuit measurements inside the QASM code by
+        calling the returned function within a :class:`qml.QNode <pennylane.QNode>`.
 
         .. code-block:: python
 
@@ -588,7 +625,8 @@ def from_qasm(quantum_circuit: str, measurements=None):
             with open("circuit.qasm", "r") as f:
                 loaded_circuit = qml.from_qasm(f.read())
 
-        The ``loaded_circuit`` function can now be used within a :class:`qml.QNode <pennylane.QNode>` as a two-wire quantum template.
+        The ``loaded_circuit`` function can now be used within a
+        :class:`qml.QNode <pennylane.QNode>` as a two-wire quantum template.
 
         .. code-block:: python
 
@@ -652,18 +690,19 @@ def from_quil(quil: str):
 
     .. code-block:: python
 
-        >>> quil_str = 'H 0\\n'
-        ...            'CNOT 0 1'
-        >>> my_circuit = qml.from_quil(quil_str)
+        quil_str = 'H 0\\nCNOT 0 1'
+        my_circuit = qml.from_quil(quil_str)
 
     The ``my_circuit`` template can now be used within QNodes, as a
     two-wire quantum template.
 
-    >>> @qml.qnode(dev)
-    >>> def circuit(x):
-    >>>     qml.RX(x, wires=1)
-    >>>     my_circuit(wires=(1, 0))
-    >>>     return qml.expval(qml.Z(0))
+    .. code-block:: python
+
+        @qml.qnode(dev)
+        def circuit(x):
+            qml.RX(x, wires=1)
+            my_circuit(wires=(1, 0))
+            return qml.expval(qml.Z(0))
 
     Args:
         quil (str): a Quil string containing a valid quantum circuit
@@ -702,3 +741,114 @@ def from_quil_file(quil_filename: str):
     """
     plugin_converter = plugin_converters["quil_file"].load()
     return plugin_converter(quil_filename)
+
+
+def from_qasm3(quantum_circuit: str, wire_map: dict | None = None) -> Callable:
+    """
+    Converts an OpenQASM 3.0 circuit into a quantum function that can be used within a QNode.
+
+    .. note::
+
+        The standard library gates, qubit registers, built-in mathematical functions and constants, subroutines,
+        variables, control flow, measurements, inputs, outputs, custom gates and ``end`` statements are all supported.
+        Pulses are not yet supported.
+
+        In order to use this function, ``openqasm3`` and ``'openqasm3[parser]'`` must be installed in the user's
+        environment. Please consult the `OpenQASM installation instructions <https://pypi.org/project/openqasm3>`__
+        for directions.
+
+    Args:
+        quantum_circuit (str): a QASM 3.0 string containing a simple quantum circuit.
+        wire_map (Optional[dict]):  the mapping from OpenQASM 3.0 qubit names to PennyLane wires.
+
+    Returns:
+        Callable: A quantum function that will execute the program.
+
+
+    **Examples**
+
+    First, we define a QASM 3.0 circuit as a string. In this example, we define three qubits,
+    a few parameterized gates, a subroutine with a measurement, and a control flow statement.
+
+    .. code-block:: python
+
+        qasm_string = '''
+                qubit q0;
+                qubit q1;
+                qubit q2;
+
+                float theta = 0.2;
+                int power = 2;
+
+                ry(theta / 2) q0;
+                rx(theta) q1;
+                pow(power) @ x q0;
+
+                def random(qubit q) -> bit
+                {
+                    bit b = "0";
+                    h q;
+                    measure q -> b;
+                    return b;
+                }
+
+                bit m = random(q2);
+
+                if (m) {
+                    int i = 0;
+                    while (i < 5) {
+                        i = i + 1;
+                        rz(i) q1;
+                        break;
+                    }
+                }
+        '''
+
+    We can convert this circuit into a PennyLane quantum function using:
+
+    .. code-block:: python
+
+        @qml.qnode(qml.device("default.qubit", wires=[0, 1, 2]))
+        def my_circuit():
+            qml.from_qasm3(
+                qasm_string,
+                {'q0': 0, 'q1': 1, 'q2': 2}
+            )()
+            return qml.expval(qml.Z(0))
+
+    Inspecting the circuit, we can see that the operations and measurements have been correctly interpreted.
+
+    >>> print(qml.draw(my_circuit)())
+    0: ──RY(0.10)──X²────────────┤  <Z>
+    1: ──RX(0.20)───────RZ(1.00)─┤
+    2: ──H─────────┤↗├──║────────┤
+                    ╚═══╝
+    """
+    if not has_openqasm:  # pragma: no cover
+        raise ImportWarning(
+            "from_qasm3 requires openqasm3 and 'openqasm3[parser]' to be installed in your environment. "
+            "Please consult the OpenQASM 3.0 installation instructions for more information:"
+            " https://pypi.org/project/openqasm3/."
+        )  # pragma: no cover
+    # parse the QASM program
+    try:
+        ast = openqasm3.parser.parse(quantum_circuit, permissive=True)
+    except AttributeError as e:  # pragma: no cover
+        raise ImportError(
+            "antlr4-python3-runtime is required to interpret openqasm3 in addition to the openqasm3 package"
+        ) from e  # pragma: no cover
+    except Exception as e:
+        raise SyntaxError(
+            f"Something went wrong when parsing the provided OpenQASM 3.0 code. "
+            f"Please ensure the code is valid OpenQASM 3.0 syntax. {str(e)}",
+        ) from e
+
+    def interpret_function(**kwargs):
+        context = QasmInterpreter().interpret(
+            ast, context={"name": "global", "wire_map": wire_map}, **kwargs
+        )
+        if context["return"]:
+            return tuple(map(lambda v: v.val, context["return"].values()))
+        return context
+
+    return interpret_function
